@@ -149,13 +149,26 @@ def bayes_naiv_clasifier(dir, email_file):
     return p_safe, p_spam
 
 
-count = 0
-corect = 0
-for file in os.listdir(".\\lingspam_public\\bare\\part10"):
-    count += 1
-    a = bayes_naiv_clasifier("bare", os.path.join(".\\lingspam_public\\bare\\part10", file))
-    if a[0]>a[1] and not re.search('spmsg*', file) or a[0]<=a[1] and re.search('spmsg*', file):
-        corect += 1
+def accurecy_comp():
+    root_dir = ".\\lingspam_public"
+    accurecy = 0
+    random_accurecy = 0
+    count_all = 0
+    for dir in ['bare', 'lemm', 'lemm_stop', 'stop']:
+        all = 0
+        correct = 0
+        part = root_dir + "\\" + dir + "\\part10"
+        for email in os.listdir(part):
+            all += 1
+            count_all += 1
+            result = bayes_naiv_clasifier(dir, part + "\\" + email)
+            if result[0] > result[1] and not re.search('spmsg*', email) or result[0] <= result[1] and re.search('spmsg*', email):
+                correct += 1
+            if not re.search('spmsg*', email):
+                random_accurecy += 1
 
+        accurecy += correct/all
 
-print(corect/count)
+    return accurecy/4, random_accurecy/count_all
+
+print(f"accurecy score :  {accurecy_comp()}")
