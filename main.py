@@ -1,21 +1,26 @@
 import re
 import numpy as np
 import os
+import json 
 
-#functie care construieste o lista de civinte unice care apar in email-urile din baza de date
-#functia parcurge fiecare email din baza de date si adauga cuvintele intr-un set de elemente unice
-def get_features():
-    root_dir = ".\\lingspam_public"
-    files = os.listdir(root_dir)
-    parts = []
-    for f in files:
-        f_root = os.path.join(root_dir, f)
-        if f != 'readme.txt':
-            parts += [os.path.join(f_root, a) for a in os.listdir(f_root)]
+def get_features(directory):
+    dir_processed = {}
+    data_directory = os.path.join(".\\database", directory)
+    try:
+        os.mkdir(data_directory)
+    except:
+        pass
+    processed_file = open(os.path.join(data_directory, "data.txt"), 'w')
+
+    main_dir = ".\\lingspam_public"
+    root_dir = os.path.join(main_dir, directory)
+    parts = [os.path.join(root_dir, f) for f in os.listdir(root_dir)]
+    parts = sorted(parts, key=lambda x: int(x.split('part')[-1]))
+    print(parts)
 
     words = set()
-    for dir in parts:
-        emails = [os.path.join(dir, e) for e in os.listdir(dir)]
+    for part in parts:
+        emails = [os.path.join(part, e) for e in os.listdir(part)]
         for e in emails:
             email = open(e, 'r')
             lines = email.readlines()
@@ -24,186 +29,122 @@ def get_features():
                 if w.isalpha() and len(w) > 1:
                     words.add(w.lower())
 
-    return list(words)
+    dir_processed["featured"] = list(words)
 
-#deoarece rularea functiei de mai sus care proceseaza toate cuvintele din email-uri dureaza 46.848 secunde vom scrie lista finala intr-un fisier pentu a fi accesat fara procesartea tuturol fisierleor la fiecare rulare
-def write_list_in_file():
-    file = open("words.txt", 'w')
-    words = ' '.join(get_features())
-    file.write(words)
-
-#write_list_in_file()
+    dir_processed["X"] = []
+    dir_processed["Y"] = []
+    count = 0
     
-
-#avem 10408 emailuri pentru train si 59836 feature -uri
-#functia ia ficare cuvant ca atribut si ficare email instanta si contruieste tabelelul de date in train_x
-#nu vom folosi aboardarea asta deoarece pentru cele 10000 de emailuri timpul de rulare va fi 1000 sec ~= 16 min si dimensiune fisierului final ~= 24000 MB
-#am pus un punct de orpire la 300 email-uri pentru a dedea cum ar arata baza de date processsata in felul asta
-def process_data_into_database1():
-    root_dir = ".\\lingspam_public"
-    files = os.listdir(root_dir)
-    parts = []
-    for f in files:
-        f_root = os.path.join(root_dir, f)
-        if f != 'readme.txt':
-            parts += [os.path.join(f_root, a) for a in os.listdir(f_root) if a != 'part10']
-    train_y = []
-    at = 0 
-    
-    output = open("train_x old.csv", 'w')
-    file = open("words.txt", 'r')
-    collums = file.readline().split()
-
-    for dir in parts:
-        emails = [os.path.join(dir, e) for e in os.listdir(dir)]
+    for part in parts[:-1]:
+        emails = [os.path.join(part, e) for e in os.listdir(part)]
         for e in emails:
-            if at == 300:
-                break
-            at += 1
-            features = np.zeros(len(collums))
-            email = open(e, 'r').readlines()
-            content = email[0].split() + email[2].split()
-            for w in content:
-                if w.isalpha() and len(w) > 1:
-                    index = collums.index(w.lower())
-                    if index != -1:
-                        features[index] = content.count(w)
-            output.write(' '.join(map(str, map(int, features))) + '\n')
-            train_y.append(1 if re.search('spmsg*', e) else 0)
-
-    return train_y
-
-
-#train_y = process_data_into_database1()
-
-#a doua abordare va implica salvarea unor tuple cu indexul si count-ul fiecarui cuvant dintr-un email. In tuplu indexul este pozitia cuvantului in vectorul de feature-uri si count-ul este individualizat pt fiecare email
-#salvarea se va face tot intr-un csv pentru accesarea mai rapida dupa prima rulare 
-def process_data_into_database2():
-    root_dir = ".\\lingspam_public"
-    files = os.listdir(root_dir)
-    parts = []
-    for f in files:
-        f_root = os.path.join(root_dir, f)
-        if f != 'readme.txt':
-            parts += [os.path.join(f_root, a) for a in os.listdir(f_root) if a != 'part10']
-    
-    output = open("train_x.csv", 'w')
-    file = open("words.txt", 'r')
-    features = file.readline().split()
-
-    for dir in parts:
-        emails = [os.path.join(dir, e) for e in os.listdir(dir)]
-        for e in emails:
+            count += 1
             feat = []
             email = open(e, 'r').readlines()
             content = email[0].split() + email[2].split()
             words = [w for w in content if w.isalpha() and len(w) > 1]
             words = list(set(words))
             for w in words:
-                index = features.index(w)
-                count = content.count(w)
-                tup = (index, count)
+                index = dir_processed["featured"].index(w)
+                word_count = content.count(w)
+                tup = (index, word_count)
                 feat.append(tup)
-            output.write(' '.join(map(str, feat)) + '\n')
+            dir_processed["X"].append(feat)
+            dir_processed["Y"].append(0 if re.search('spmsg*', e) else 1)
+        print(part)
 
-#process_data_into_database2()
+    dir_processed["count"] = count
 
-def process_data_class():
-    root_dir = ".\\lingspam_public"
-    files = os.listdir(root_dir)
-    parts = []
-    for f in files:
-        f_root = os.path.join(root_dir, f)
-        if f != 'readme.txt':
-            parts += [os.path.join(f_root, a) for a in os.listdir(f_root) if a != 'part10']
+    processed_file.write(json.dumps(dir_processed))
 
-    train_y = []
+    
+def calculate_probability_table(directory):
+    dir_probability = {}
+    data_directory = os.path.join(".\\database", directory)
 
-    for dir in parts:
-        emails = [os.path.join(dir, e) for e in os.listdir(dir)]
-        for e in emails:
-            train_y.append(1 if re.search('spmsg*', e) else 0)
+    probability_file = open(os.path.join(data_directory, "probability.txt"), 'w')
 
-    return train_y
+    data_file = open(os.path.join(data_directory, "data.txt"), 'r')
+    data = json.loads(data_file.read())
 
-train_y = process_data_class()
-#pentru implementarea algoritmului bayes naiv vom avea nevoie de computarea probabilitatilor de tipul P(email are cuvantul W|email e/nu e spam)
-#din aceasta computare se va forma un tabel de probabilitati avand cuvintele ca coloane si e/nu e spam ca linii
-#functia de mai joi proceseaza aceste probabilitati pe baza tabeleului de date determinat mai sus 
-#vom calcula doar probabilitatile de tipul p = P(email are cuvantul W|email e/nu e spam), nu si cazul in care emailul nu are cuvantul, acesta fiind 1-p
-def process_conditional_probability():
-    probability_table = open("probability_table.txt", 'w')
-
-    file = open("words.txt", 'r')
-    features = file.readline().split()
-
-    emails = open("train_x.csv", 'r')
-
-    safe_index = [i for i in range(0, len(train_y)) if train_y[i] == 1]
-    spam_index = [i for i in range(0, len(train_y)) if train_y[i] == 0]
+    safe_index = [i for i in range(0, data["count"]) if data["Y"][i] == 1]
+    spam_index = [i for i in range(0, data["count"]) if data["Y"][i] == 0]
 
     count_safe = len(safe_index)
     count_spam = len(spam_index)
 
-    safe_probability = count_safe/len(train_y)
-    spam_probability = count_spam/len(train_y)
+    safe_probability = count_safe/data["count"]
+    spam_probability = count_spam/data["count"]
 
-    safe_line = [safe_probability]
-    spam_line = [spam_probability]
+    dir_probability["P(safe)"] = safe_probability
+    dir_probability["P(spam)"] = spam_probability
 
-    probab_safe = np.zeros(len(features))
-    probab_spam = np.zeros(len(features))
+    l = len(data["featured"])
 
+    probab_safe = np.zeros(l)
+    probab_spam = np.zeros(l)
 
     i = 0 
-    for email in emails.readlines():
-        tuples_list = re.findall(r'\((.*?)\)', email)
-        tuples_list = [tuple(map(int, tup.strip().split(','))) for tup in tuples_list]
+    dir_probability["P(w|safe)"] = []
+    dir_probability["P(w|spam)"] = []
+    for email in data["X"]:
         if i in safe_index:
-            for tup in tuples_list:
+            for tup in email:
                 probab_safe[tup[0]] += 1
         else:
-            for tup in tuples_list:
+            for tup in email:
                 probab_spam[tup[0]] += 1
         i += 1
 
-    for i in range(len(features)):
-        safe_line.append(probab_safe[i]/count_safe)
-        spam_line.append(probab_spam[i]/count_spam)
+    for i in range(l):
+        dir_probability["P(w|safe)"].append(probab_safe[i]/count_safe)
+        dir_probability["P(w|spam)"].append(probab_spam[i]/count_spam)
 
-    probability_table.write(' '.join(map(str, safe_line)) + '\n')
-    probability_table.write(' '.join(map(str, spam_line)))
+    probability_file.write(json.dumps(dir_probability))
 
 
-#process_conditional_probability()
-#in final in probability table avem: 2 linii unde primul elemet din linia 1 e p(email = safe) si linia 2 p(email = safe) urmate fiecare respectiv de 59836 probabilitiati pentru fiecare cuvant gasit in email-uri
-    
+#ruleaza functiile pt fiecare directoriu
+def process_all_data():
+    root_dir = ".\\lingspam_public"
+    dirs = os.listdir(root_dir)
+    for dir in dirs:
+        if dir != 'readme.txt':
+            get_features(dir)
+            calculate_probability_table(dir)
 
-def bayes_naiv_clasifier(email_file):
+#process_all_data()
+
+
+
+def bayes_naiv_clasifier(dir, email_file):
     email = open(email_file, 'r').readlines()
     e = email[0].split() + email[2].split()
     content = [w for w in e if (w.isalpha() and len(w) > 1)]
+    
+    data_directory = os.path.join(".\\database", dir)
 
-    words = open("words.txt", 'r').readline().split()
+    probability_file = open(os.path.join(data_directory, "probability.txt"), 'r')
+    probabilitys = json.loads(probability_file.read())
+    
+    data_file = open(os.path.join(data_directory, "data.txt"), 'r')
+    data = json.loads(data_file.read())
 
-    probabilitys = open("probability_table.txt", 'r').readlines()
-    prob_safe = probabilitys[0].split()
-    prob_spam = probabilitys[1].split()
+    words = data["featured"]
 
-    p_safe = float(prob_safe[0])
-    p_spam = float(prob_spam[0])
+    prob_safe = probabilitys["P(w|safe)"]
+    prob_spam = probabilitys["P(w|spam)"]
+    p_safe = probabilitys["P(safe)"]
+    p_spam = probabilitys["P(spam)"]
 
     for i in range(1, len(prob_safe)-1):
         if content.count(words[i-1]) != 0:
-            p_safe *= float(prob_safe[i])
-            p_spam *= float(prob_spam[i])
+            p_safe *= prob_safe[i]
+            p_spam *= prob_spam[i]
         else:
-            p_safe *= 1-float(prob_safe[i])
-            p_spam *= 1-float(prob_spam[i])
+            p_safe *= 1-prob_safe[i]
+            p_spam *= 1-prob_spam[i]
 
     return p_safe, p_spam
 
 
-safe, spam = bayes_naiv_clasifier(".\\lingspam_public\\lemm_stop\\part10\\9-5msg2.txt")
-
-print((safe, spam))
+print(bayes_naiv_clasifier("bare", ".\\lingspam_public\\bare\\part10\\9-5msg1.txt"))
