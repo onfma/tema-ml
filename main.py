@@ -1,3 +1,4 @@
+import math
 import re
 import numpy as np
 import os
@@ -59,6 +60,7 @@ def get_features(directory):
 
     
 def calculate_probability_table(directory):
+    alpha = 1
     dir_probability = {}
     data_directory = os.path.join(".\\database", directory)
 
@@ -81,8 +83,8 @@ def calculate_probability_table(directory):
 
     l = len(data["featured"])
 
-    probab_safe = np.zeros(l)
-    probab_spam = np.zeros(l)
+    probab_safe = np.zeros(l) + alpha
+    probab_spam = np.zeros(l) + alpha
 
     i = 0 
     dir_probability["P(w|safe)"] = []
@@ -97,8 +99,8 @@ def calculate_probability_table(directory):
         i += 1
 
     for i in range(l):
-        dir_probability["P(w|safe)"].append(probab_safe[i]/count_safe)
-        dir_probability["P(w|spam)"].append(probab_spam[i]/count_spam)
+        dir_probability["P(w|safe)"].append(probab_safe[i]/(count_safe + alpha * l))
+        dir_probability["P(w|spam)"].append(probab_spam[i]/(count_safe + alpha * l))
 
     probability_file.write(json.dumps(dir_probability))
 
@@ -109,7 +111,6 @@ def process_all_data():
     dirs = os.listdir(root_dir)
     for dir in dirs:
         if dir != 'readme.txt':
-            get_features(dir)
             calculate_probability_table(dir)
 
 #process_all_data()
@@ -133,18 +134,28 @@ def bayes_naiv_clasifier(dir, email_file):
 
     prob_safe = probabilitys["P(w|safe)"]
     prob_spam = probabilitys["P(w|spam)"]
+
     p_safe = probabilitys["P(safe)"]
     p_spam = probabilitys["P(spam)"]
 
-    for i in range(1, len(prob_safe)-1):
-        if content.count(words[i-1]) != 0:
-            p_safe *= prob_safe[i]
-            p_spam *= prob_spam[i]
-        else:
-            p_safe *= 1-prob_safe[i]
-            p_spam *= 1-prob_spam[i]
+    for i in range(len(words)):
+        if content.count(words[i]) != 0 and prob_safe[i] != 0 and prob_spam[i] != 0:
+            p_safe += math.log(prob_safe[i])
+            p_spam += math.log(prob_spam[i])
+        elif content.count(words[i]) == 0 and prob_safe[i] != 0 and prob_spam[i] != 0:
+            p_safe += math.log(1 - prob_safe[i])
+            p_spam += math.log(1 - prob_spam[i])
 
     return p_safe, p_spam
 
 
-print(bayes_naiv_clasifier("bare", ".\\lingspam_public\\bare\\part10\\9-5msg1.txt"))
+count = 0
+corect = 0
+for file in os.listdir(".\\lingspam_public\\bare\\part10"):
+    count += 1
+    a = bayes_naiv_clasifier("bare", os.path.join(".\\lingspam_public\\bare\\part10", file))
+    if a[0]>a[1] and not re.search('spmsg*', file) or a[0]<=a[1] and re.search('spmsg*', file):
+        corect += 1
+
+
+print(corect/count)
