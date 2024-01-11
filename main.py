@@ -6,6 +6,14 @@ import json
 from sklearn.metrics import accuracy_score
 import matplotlib.pyplot as plt
 
+
+###########################################---------PROCESAREA DATELOR---------###########################################
+
+# functie de prelucrate a datelor de intrare intr-un format mai eficient pentru lucru
+# pentru un fisier de date de intrare se determina atributele (cuvintele din email-uri) (= data["features"])
+# pentru datele de antrenament (part 1- 9) pnetru fiecare email se construieste un "vector de adiacenta" = un vector ce contine indicii atributelor care apar in email (= data["X"])
+# pentru toate datele de antrenament se construieste un vector de clase (= data["Y"])
+# la final aceste date procesate sunt salvate in data.txt, intr-un fiseir separata pentru fiecare grup de date (bare, lemm, lemm_stop, stop) 
 def get_features(directory):
     dir_processed = {}
     data_directory = os.path.join(".\\database", directory)
@@ -31,7 +39,7 @@ def get_features(directory):
                 if w.isalpha() and len(w) > 1:
                     words.add(w.lower())
 
-    dir_processed["featured"] = list(words)
+    dir_processed["features"] = list(words)
 
     dir_processed["X"] = []
     dir_processed["Y"] = []
@@ -47,7 +55,7 @@ def get_features(directory):
             words = [w for w in content if w.isalpha() and len(w) > 1]
             words = list(set(words))
             for w in words:
-                index = dir_processed["featured"].index(w)
+                index = dir_processed["features"].index(w)
                 feat.append(index)
             dir_processed["X"].append(feat)
             dir_processed["Y"].append(0 if re.search('spmsg*', e) else 1)
@@ -57,6 +65,10 @@ def get_features(directory):
     processed_file.write(json.dumps(dir_processed))
 
     
+# functie care determina din datele prelucrate mai sus o tablea de probabilitati pentru calculele din algoritmul bayes
+# se calculeaza P(spam) si P(safe)
+# pentru fiecare cuvant w se calculeaza P(w|safe) si P(w|spam)
+# toate probabilitatile se salveza intr-un dictionary care este apoi salvat in fisierul probability.txt, unul pentru fiecare fiseir de antrenament in parte
 def calculate_probability_table(directory):
     alpha = 1
     dir_probability = {}
@@ -79,7 +91,7 @@ def calculate_probability_table(directory):
     dir_probability["P(safe)"] = safe_probability
     dir_probability["P(spam)"] = spam_probability
 
-    l = len(data["featured"])
+    l = len(data["features"])
 
     probab_safe = np.zeros(l) + alpha
     probab_spam = np.zeros(l) + alpha
@@ -103,7 +115,8 @@ def calculate_probability_table(directory):
     probability_file.write(json.dumps(dir_probability))
 
 
-#ruleaza functiile pt fiecare directoriu
+# ruleaza functiile pt fiecare directoriu
+# dupa rulare se obtine fisierul database care contine toate datele procesate pentru acces mai eficient
 def process_all_data():
     root_dir = ".\\lingspam_public"
     dirs = os.listdir(root_dir)
@@ -112,10 +125,15 @@ def process_all_data():
             get_features(dir)
             calculate_probability_table(dir)
 
-#process_all_data()
+# process_all_data()    # ERT = 600 sec
 
 
+###########################################---------ALGORITMUL BAYES NAIV---------###########################################
 
+
+# fuctia implementeaza algoritmul bayes naiv pentru clasificarea unei instante de test
+# foloseste formula principala a algoritmului pentru a calcula p_safe si p_spam, clasificarea finala fiind cea mai mare ca valoare
+# pentru ca algoritmul lucreaza cu produsul mai multor valor mici am folosit log(probability) pentru a nu obtine 0 pentru ambele p-uri
 def bayes_naiv_clasifier(dir, email_file):
     email = open(email_file, 'r').readlines()
     e = email[0].split() + email[2].split()
@@ -129,7 +147,7 @@ def bayes_naiv_clasifier(dir, email_file):
     data_file = open(os.path.join(data_directory, "data.txt"), 'r')
     data = json.loads(data_file.read())
 
-    words = data["featured"]
+    words = data["features"]
 
     prob_safe = probabilitys["P(w|safe)"]
     prob_spam = probabilitys["P(w|spam)"]
@@ -147,7 +165,8 @@ def bayes_naiv_clasifier(dir, email_file):
 
     return p_safe, p_spam
 
-
+# functia calculeaza acuratetea de test, folosind part10 ca date de test
+# ERT = 500 sec / directory
 def test_accuracy(dir):
     root_dir = ".\\lingspam_public"
     true_value = []
@@ -160,10 +179,14 @@ def test_accuracy(dir):
 
     return accuracy_score(true_value, test_y)
 
-#print(f"Accuracy score without cvloo :  {test_accuracy('bare')}")
+# print(f"Accuracy score :  {test_accuracy('bare')}")
 
 
+###########################################---------CVLOO---------###########################################
 
+# functie auxiliara pentru implementarea cvloo
+# folsita pentru recalcularea probabilitatilor folosite la bayes naiv prin redefinirea probabilitatilor P(w|safe) si P(w|spam) pentru cuvintele din emailul scos din antrenament
+# functia returneaza probabilitatile recalculate
 def redefine_probabilities(dir, email, type):
     data_directory = os.path.join(".\\database", dir)
 
@@ -192,15 +215,17 @@ def redefine_probabilities(dir, email, type):
 
     return probabilitys
 
+
+# functia de clasificarea a unei instante scoase prin cvloo
+# functia incepe prin rularea functiei de calcul a probabilitatilor cu instanta scoasa si continua cu calculul p_safe si p_spam, clasificarea finala fiind cea mai mare ca valoare
 def bayes_naiv_clasifier_cvloo(dir, instance, type):
-    #reantrenarea probabilitatilor cu scoaterea instantei date
     probabilitys = redefine_probabilities(dir, instance, type)
     
     data_directory = os.path.join(".\\database", dir)
     data_file = open(os.path.join(data_directory, "data.txt"), 'r')
     data = json.loads(data_file.read())
 
-    words = data["featured"]
+    words = data["features"]
 
     prob_safe = probabilitys["P(w|safe)"]
     prob_spam = probabilitys["P(w|spam)"]
@@ -222,6 +247,9 @@ def bayes_naiv_clasifier_cvloo(dir, instance, type):
 
     return p_safe, p_spam
 
+# functie de calcul a acuratetei cvloo
+# pentru fiecare instanta din cele de antrenament se apeleaza bayes_naiv_clasifier_cvloo si returneaza acuratetea totala pe setul de date 
+# ERT = 900 sec / directory
 def cross_validate_cvloo(dir):
     data_directory = os.path.join(".\\database", dir)
     data_file = open(os.path.join(data_directory, "data.txt"), 'r')
@@ -241,7 +269,11 @@ def cross_validate_cvloo(dir):
     return overall_accuracy
 
 
-#print(f"Overall accuracy with cvloo: {cross_validate_cvloo("bare")}")
+# print(f"Overall accuracy with cvloo: {cross_validate_cvloo("bare")}")
+
+
+###########################################---------GARFIC DE PERFORMANTA---------###########################################
+
 
 def plot_accuracies():
     accuracies = {}
